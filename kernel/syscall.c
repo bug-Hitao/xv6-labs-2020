@@ -104,6 +104,7 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
+extern uint64 sys_trace(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -127,8 +128,15 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_trace]   sys_trace,
 };
 
+static char *syscall_names[] = {
+        "fork", "exit", "wait", "pipe", "read", "kill", "exec", "fstat", "chdir", "dup", "getpid", "sbrk", "sleep",
+        "uptime", "open", "write", "mknod", "unlink", "link", "mkdir", "close", "trace"
+};
+
+//syscall:调用系统函数的入口，获取陷阱帧中a7寄存器中的索引值，来对syscalls函数指针数组进行索引并调用其中函数，返回结果放入陷阱帧中的a0寄存器。
 void
 syscall(void)
 {
@@ -138,6 +146,11 @@ syscall(void)
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
+
+    int trace_mask = p->trace_mask;  //从proc结构体中获取sysproc.c/sys_trace里写入的mask掩码的值
+    if((trace_mask >> num & 1)){   //右移mask值看是否为num标志位上是否为1，为1则说明是需要被监控的
+      printf("%d: syscall %s -> %d\n", p->pid, syscall_names[num - 1], p->trapframe->a0);
+    }
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);

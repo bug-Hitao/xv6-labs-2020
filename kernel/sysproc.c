@@ -95,3 +95,17 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+//在kernel/sysproc.c中添加一个sys_trace()函数
+uint64
+sys_trace(void)
+{
+  int mask;
+  if(argint(0, &mask) < 0)  //将陷阱帧中a0寄存器的值存入mask中，a0存放的是系统调用的第一个参数，在trace中第一个参数为整数“掩码”
+    return -1;
+  
+  struct proc *p = myproc();
+  p->trace_mask = mask;
+  
+  return 0;  
+}
