@@ -6,6 +6,10 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
+
+extern uint64 acquire_freemem();
+extern uint64 acquire_nproc();
 
 uint64
 sys_exit(void)
@@ -108,4 +112,26 @@ sys_trace(void)
   p->trace_mask = mask;
   
   return 0;  
+}
+
+uint64
+sys_sysinfo(void)
+{
+  struct sysinfo info;
+  uint64 addr;
+  struct proc *p = myproc();
+
+  info.freemem = acquire_freemem();
+  info.nproc = acquire_nproc();
+
+  //将陷阱帧a0寄存器对应的值存入addr中，a0存放的是系统调用的第一个参数--指向struct sysinfo的指针
+  if(argaddr(0, &addr) < 0)
+    return -1;
+
+  //将 info 结构体的内容从内核空间复制到用户进程的虚拟地址空间 addr 对应的内存位置
+  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+    return -1;
+
+  
+  return 0;
 }

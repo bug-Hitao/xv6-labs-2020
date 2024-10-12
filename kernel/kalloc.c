@@ -80,3 +80,21 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+uint64 
+acquire_freemem(){
+  struct run *r;
+  uint64 cnt = 0;
+
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+  while(r){
+    cnt++;           //遍历空闲内存链表，计算空闲页面总量
+    r = r->next;
+  }
+
+  release(&kmem.lock);
+
+
+  return cnt * PGSIZE;  //空闲内存的字节数等于空闲页面总量 * 内存页总字节数（4096）
+}

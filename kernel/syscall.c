@@ -105,6 +105,7 @@ extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 extern uint64 sys_trace(void);
+extern uint64 sys_sysinfo(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -129,11 +130,12 @@ static uint64 (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_trace]   sys_trace,
+[SYS_sysinfo] sys_sysinfo
 };
 
 static char *syscall_names[] = {
         "fork", "exit", "wait", "pipe", "read", "kill", "exec", "fstat", "chdir", "dup", "getpid", "sbrk", "sleep",
-        "uptime", "open", "write", "mknod", "unlink", "link", "mkdir", "close", "trace"
+        "uptime", "open", "write", "mknod", "unlink", "link", "mkdir", "close", "trace", "sysinfo"
 };
 
 //syscall:调用系统函数的入口，获取陷阱帧中a7寄存器中的索引值，来对syscalls函数指针数组进行索引并调用其中函数，返回结果放入陷阱帧中的a0寄存器。
