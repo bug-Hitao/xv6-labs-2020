@@ -440,3 +440,35 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+void
+vmprint(pagetable_t pagetable, uint64 depth)
+{
+  if(depth > 2){
+    return ;
+  }
+  if(depth == 0){
+    printf("page table %p\n", pagetable);
+  }
+  char *buf;
+  if(depth == 0){
+    buf = "..";
+  }
+  if(depth == 1){
+    buf = ".. ..";
+  }
+  if(depth == 2){
+    buf = ".. .. ..";
+  }
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      // 这个 PTE 指针指向 更低一级的页表
+      uint64 child = PTE2PA(pte);
+      printf("%s%d: pte %p pa %p\n", buf, i, pte, child);
+      vmprint((pagetable_t)child, depth + 1);
+      
+    } 
+  }
+  
+}
