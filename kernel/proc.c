@@ -253,6 +253,35 @@ growproc(int n)
   return 0;
 }
 
+int
+is_lazy_alloc_va(uint64 va){
+  struct proc *p = myproc();
+  if(va >= p->sz){
+    return 0;
+  }
+  //判断va是否在栈页面的下一页，如果是的话，说明va地址在保护页，则不应该分配页表
+  if(va < PGROUNDDOWN(p->trapframe->sp) && va >= PGROUNDDOWN(p->trapframe->sp) - PGSIZE)
+    return 0;
+
+  return 1;
+}
+
+int
+lazy_alloc(uint64 va){
+  va = PGROUNDDOWN(va);   //PGROUNDDOWN(va)将出错的虚拟地址向下舍入到页面边界
+  char *mem = kalloc();   //分配页面，返回的页面的物理地址
+  if(mem == 0){  //分配页面失败
+    return -1;
+  }
+  memset(mem, 0, PGSIZE);
+  struct proc *p = myproc();
+  if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){  //将虚拟地址va对应的页表条目映射页面的物理地址
+    kfree(mem);
+    return -1;
+  }
+return 0;
+}
+
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
