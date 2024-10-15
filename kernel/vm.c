@@ -151,6 +151,10 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   uint64 a, last;
   pte_t *pte;
 
+  if (size == 0){
+    panic("mappages: size");
+  }
+
   a = PGROUNDDOWN(va);
   last = PGROUNDDOWN(va + size - 1);
   for(;;){
@@ -185,7 +189,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
-      panic("uvmunmap: not a leaf");
+      panic("uvmunmap: not a leaf"); //不是一个叶子结点
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
@@ -311,7 +315,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -319,14 +322,18 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    *pte = *pte & ~PTE_W;
+    *pte = *pte | PTE_COW; //将页表条目cow标志位置为1
+    flags = PTE_FLAGS(*pte); //PTE_FLAGS：提取页表条目的低十位，即标志位
+    //为子进程申请一个新的页面，并将父进程对应物理页面的所有内容复制给子进程的页面
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){ //将父进程页表条目对应的页面与子进程相应位置映射
+      //kfree(mem);
       goto err;
     }
+    incr((void *)pa); //增加该页面的应用计数
   }
   return 0;
 
@@ -358,7 +365,13 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    if(is_cow_fault(pagetable, va0)){  //希望cow页面也能正常的copyout，所以检测页面是否为cow页面，是则分配新的物理页
+      if(cow_alloc(pagetable, va0) < 0){
+        printf("copyout: cowalloc fail!\n");
+        return -1;
+      }
+    }
+    pa0 = walkaddr(pagetable, va0); //返回虚拟地址指向页表条目中的物理地址
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
@@ -439,4 +452,49 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int
+is_cow_fault(pagetable_t pagetable, uint64 va) {
+  if(va >= MAXVA){
+    return 0;
+  }
+  va = PGROUNDDOWN(va);
+  pte_t *pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
+    return 0;
+  if((*pte & PTE_U) == 0)
+    return 0;
+
+  if(*pte & PTE_COW){
+    return 1;
+  }
+  
+  return 0;
+}
+
+int             
+cow_alloc(pagetable_t pagetable, uint64 va){
+  va = PGROUNDDOWN(va);
+  pte_t *pte = walk(pagetable, va, 0); 
+
+  uint64 pa = PTE2PA(*pte);
+  int flag = PTE_FLAGS(*pte);
+
+  char *mem = kalloc();
+  if(mem == 0){
+    return -1;
+  }
+  memmove(mem, (char *)pa, PGSIZE); 
+  uvmunmap(pagetable, va, 1, 1);//解除原映射关系，其中调用kfree()函数：如果页面引用计数大于1，则减去1；如果等于1，减一并删去该页面
+  
+  flag &= ~(PTE_COW); //去掉cow标志位
+  flag |= PTE_W; //新分配页面加上写权限
+  if(mappages(pagetable, va, PGSIZE, (uint64) mem, flag) < 0){
+    kfree(mem); 
+    return -1;
+  }
+  return 0;
 }
