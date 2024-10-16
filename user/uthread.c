@@ -10,15 +10,34 @@
 #define STACK_SIZE  8192
 #define MAX_THREAD  4
 
+struct context {
+  uint64 ra;
+  uint64 sp;
+
+  // callee-saved
+  uint64 s0;
+  uint64 s1;
+  uint64 s2;
+  uint64 s3;
+  uint64 s4;
+  uint64 s5;
+  uint64 s6;
+  uint64 s7;
+  uint64 s8;
+  uint64 s9;
+  uint64 s10;
+  uint64 s11;
+};
 
 struct thread {
-  char       stack[STACK_SIZE]; /* the thread's stack */
+  char       stack[STACK_SIZE]; /* the thread's stack  8192 个字节*/
   int        state;             /* FREE, RUNNING, RUNNABLE */
+  struct context ctx;  // 在 thread 中添加 context 结构体
 
 };
 struct thread all_thread[MAX_THREAD];
 struct thread *current_thread;
-extern void thread_switch(uint64, uint64);
+extern void thread_switch(struct context* old, struct context* new); // 修改 thread_switch 函数声明
               
 void 
 thread_init(void)
@@ -39,7 +58,7 @@ thread_schedule(void)
 
   /* Find another runnable thread. */
   next_thread = 0;
-  t = current_thread + 1;
+  t = current_thread + 1;  //从当前线程遍历往后寻找可执行线程，如果没有则等于线程池初始线程。
   for(int i = 0; i < MAX_THREAD; i++){
     if(t >= all_thread + MAX_THREAD)
       t = all_thread;
@@ -59,10 +78,7 @@ thread_schedule(void)
     next_thread->state = RUNNING;
     t = current_thread;
     current_thread = next_thread;
-    /* YOUR CODE HERE
-     * Invoke thread_switch to switch from t to next_thread:
-     * thread_switch(??, ??);
-     */
+    thread_switch(&t->ctx, &next_thread->ctx); //通过switch切换线程
   } else
     next_thread = 0;
 }
@@ -76,7 +92,11 @@ thread_create(void (*func)())
     if (t->state == FREE) break;
   }
   t->state = RUNNABLE;
-  // YOUR CODE HERE
+  t->ctx.ra = (uint64)func;       // 进程切换返回地址是上次调用swtch函数的下一个指令地址，返回地址是方法的位置。
+  // thread_switch 的结尾会返回到 ra，从而运行线程代码
+  t->ctx.sp = (uint64)&t->stack + (STACK_SIZE - 1);  // 栈指针指向线程结构体中栈数组的最高位。
+  // 将线程的栈指针指向其独立的栈，注意到栈的生长是从高地址到低地址，所以
+  // 要将 sp 设置为指向 stack 的最高地址
 }
 
 void 
